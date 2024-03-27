@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans">
+    <style>
+        .background-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('/static/safe.jpg'); 
+            background-size: cover; 
+            background-repeat: no-repeat; 
+            background-position: center; 
+            opacity: 0.4; 
+            z-index: -1; 
+        }
+        body {
+            display: flex; 
+            justify-content: center;
+            align-items: center; 
+            margin: 0%; 
+            margin-top: 1%;
+            flex-direction: column;
+        }
+        pre {
+            font-family: 'OpenSans', serif;
+        }
+        .container {
+            display: flex;
+            flex-direction: row; 
+            position: relative;
+            text-align: center; 
+            padding: 0% 2%; 
+            padding-bottom: 5%;
+            box-shadow: 0px 5px 5px 0.7px rgba(0, 0, 0, 0.4);
+            background-color: rgba(255, 255, 255, 0.7); 
+            border-radius: 10px; 
+            height: 60vh; 
+        }
+        .top-frame {
+            flex: 1; 
+            display: flex;
+            flex-direction: column; 
+            justify-content: top;
+            align-items: center; 
+            padding-right: 20px; 
+        }
+        .bottom-frame {
+            flex: 1;
+            display: flex;
+            flex-direction: column; 
+            justify-content: top; 
+            padding-left: 20px; 
+        }
+        
+        p {
+            font-size: 1.3rem;
+            color: #555; 
+        }
+        button {
+            background-color: green;
+            border-radius: 7%;
+            padding: 8px 15px;
+            color: white;
+            opacity: 0.8;
+            font-size: 1rem;
+            box-shadow: 0px 5px 5px 0px rgba(0, 0, 0, 0.4);
+            cursor: pointer; 
+        }
+        #videoCam {
+            margin-bottom: 4%;
+            margin-top: 2%;
+            width: 70%; /* Adjust the width of the video */
+        }
+        #prediction {
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+        }
+        .instructions {
+            text-align: left;
+            font-size:20px;
+        }
+        .actions{
+            text-align: left;
+            font-size:20px;
+
+        }
+    </style>
+</head>
+<body>
+    <div class="background-container"></div>
+    <h2>Smart Driver Distraction Detection</h2>
+    <div class="container">
+        <div class="top-frame">
+            <div class="instructions">
+                <p style="font-weight: bold; color: blue;">Instructions for safe driving:</p>
+                <ul>
+                    <li>Avoid using your phone while driving.</li>
+                    <li>Keep your eyes on the road at all times.</li>
+                    <li>Obey traffic signals and signs.</li>
+                    <li>Ensure proper rest before driving.</li>
+                    <li>Always wear your seatbelt.</li>
+                </ul>
+            </div>
+            
+            <button id="startBtn" onclick="toggleCam()">Safe Drive</button>
+            <video id="videoCam" autoplay></video>
+            <div id="prediction" style="background-color: #f0f0f0; padding: 10px; border-radius: 5px;color: red;">
+               
+            </div>
+            
+        </div>
+        <div class="bottom-frame">
+            <div class="actions">
+                <p style="font-weight: bold; color: blue;">Actions:</p>
+                <ul>
+                    <li>Reaching behind</li>
+                    <li>Safe Driving</li>
+                    <li>Talking phone on left</li>
+                    <li>Talking phone on right</li>
+                    <li>Texting right</li>
+                    <li>Texting left</li>
+                    <li>Drinking</li>
+                    <li>Talking to Paseenger</li>
+                    <li>Hair and Makeup</li>
+                    <li>Operating Radio</li>
+                    
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var isCameraOn = false;
+        var video;
+        var stream;
+        var previousPrediction = null;
+        var predictionStartTime = null;
+        var audioElement = new Audio();
+        var synth = window.speechSynthesis;
+
+        function toggleCam() {
+            video = document.getElementById('videoCam');
+            if (isCameraOn) {
+                stream.getTracks().forEach(track => track.stop());
+                video.style.display = 'none';
+                isCameraOn = false;
+            } else {
+                navigator.mediaDevices.getUserMedia({ video: true })
+                    .then(function(vidStream) {
+                        stream = vidStream;
+                        video.srcObject = stream;
+                        video.play();
+                        video.style.display = 'block';
+                        isCameraOn = true;
+                        sendFrames();
+                    })
+                    .catch(function(e) {
+                        console.log(e.name + ": " + e.message);
+                    });
+            }
+        }
+
+        function sendFrames() {
+            if (isCameraOn) {
+                var canvas = document.createElement('canvas');
+                var context = canvas.getContext('2d');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                var dataURL = canvas.toDataURL('image/jpeg');
+
+                fetch('/predict', {
+                    method: 'POST',
+                    body: dataURL,
+                    headers: {
+                        'Content-Type': 'application/octet-stream'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    var currentPrediction = data.prediction;
+                    if (currentPrediction !== previousPrediction) {
+                        previousPrediction = currentPrediction;
+                        predictionStartTime = new Date();
+                    } else if (predictionStartTime && (new Date() - predictionStartTime) >= 60000) {
+                        if(currentPrediction !== "Safe Driving")
+                        {
+                            speak(currentPrediction);
+                            speak(currentPrediction);
+                            speak(currentPrediction);
+                        }
+                        
+                        predictionStartTime = null;
+                    }
+                    document.getElementById('prediction').innerText = "Prediction: " + currentPrediction; 
+                })
+                .catch(error => console.error('Error:', error));
+
+                setTimeout(sendFrames, 1000); 
+            }
+        }
+
+        function speak(text) {
+            var utterThis = new SpeechSynthesisUtterance(text);
+            synth.speak(utterThis);
+        }
+    </script>
+</body>
+</html>
